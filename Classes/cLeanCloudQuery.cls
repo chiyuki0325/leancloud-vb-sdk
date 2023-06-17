@@ -26,9 +26,9 @@ Public Sub Initialize( _
 End Sub
 
 
-Public Function GetObject(ByRef ObjectID As String) As Object
+Public Function GetObject(ByRef ObjectId As String) As Object
     Dim JSON As New cJSON
-    With Utils.NewRequest("GET", ("/classes/" + ClassName + "/" + ObjectID))
+    With Utils.NewRequest("GET", ("/classes/" + ClassName + "/" + ObjectId))
         .Send
         .WaitForResponse
         If .Status = 404 Then
@@ -39,7 +39,7 @@ Public Function GetObject(ByRef ObjectID As String) As Object
             Exit Function
         End If
         Set GetObject = New LCObject
-        GetObject.Initialize Utils, ClassName, ObjectID
+        GetObject.Initialize Utils, ClassName, ObjectId
         GetObject.Deserialize JSON.Parse(.ResponseText)
     End With
 End Function

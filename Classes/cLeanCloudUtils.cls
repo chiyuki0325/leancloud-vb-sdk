@@ -20,7 +20,7 @@ Public Enum RequestAuthModes
 End Enum
 
 'Properties (pass from cLeanCloud object)
-Private AppID As String, AppKey As String, Host As String
+Private AppId As String, AppKey As String, Host As String
 Private MasterKey As String
 Private ApiVersion As String
 Private RequestAuthMode As RequestAuthModes
@@ -30,13 +30,13 @@ Private MD5CryptoServiceProvider As Object
 Private UTF8Encoding As Object
 
 Sub Initialize( _
-    ByRef sAppID As String, _
+    ByRef sAppId As String, _
     ByRef sAppKey As String, _
     ByRef sHost As String, _
     ByRef sApiVersion As String _
 )
     'Pass properties
-    AppID = sAppID
+    AppId = sAppId
     AppKey = sAppKey
     Host = sHost
     ApiVersion = sApiVersion
@@ -63,18 +63,18 @@ End Sub
 'Create a new WinHttpRequest object
 Function NewRequest( _
          ByRef sMethod As String, _
-         ByRef sURL As String, _
+         ByRef sUrl As String, _
          Optional UseMasterKey As Boolean = False, _
          Optional ContentType = "application/json" _
        ) As WinHttp.WinHttpRequest
     Set NewRequest = New WinHttp.WinHttpRequest
     With NewRequest
-        .Open sMethod, ("https://" + Host + "/" + ApiVersion + sURL), True
+        .Open sMethod, ("https://" + Host + "/" + ApiVersion + sUrl), True
         .Option(WinHttpRequestOption_SecureProtocols) = WinHttp.SecureProtocol_ALL Or _
                                                         WinHttp.SecureProtocol_TLS1 Or _
                                                         WinHttp.SecureProtocol_TLS1_1 Or _
                                                         WinHttp.SecureProtocol_TLS1_2
-        .SetRequestHeader "X-LC-Id", AppID
+        .SetRequestHeader "X-LC-Id", AppId
         If RequestAuthMode = UseSign Then
             'Sign
             If UseMasterKey Then

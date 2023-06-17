@@ -17,7 +17,7 @@ Option Explicit
 Private Const API_VERSION As String = "1.1"
 
 'Properties
-Private AppID As String, AppKey As String, Host As String
+Private AppId As String, AppKey As String, Host As String
 Private MasterKey As String
 
 'Sub classes
@@ -25,16 +25,16 @@ Private Utils As New cLeanCloudUtils
 
 'LCApplication.Initialize
 Sub Initialize( _
-    ByRef sAppID As String, _
+    ByRef sAppId As String, _
     ByRef sAppKey As String, _
     ByRef sHost As String _
 )
-    AppID = sAppID
+    AppId = sAppId
     AppKey = sAppKey
     Host = sHost
     
     'Init sub classes
-    Utils.Initialize sAppID, sAppKey, sHost, API_VERSION
+    Utils.Initialize sAppId, sAppKey, sHost, API_VERSION
 End Sub
 
 'Init master key
@@ -54,12 +54,11 @@ End Function
 
 'LCObject
 Function Object( _
-    Optional ByRef sClassName As String, _
-    Optional ByRef sObjectID As String _
+    ByRef sClassName As String, _
+    Optional ByRef sObjectId As String _
 ) As LCObject
     Set Object = New LCObject
-    Object.Initialize Utils, sClassName, sObjectID
+    Object.Initialize Utils, sClassName, sObjectId
 End Function
-
 
 

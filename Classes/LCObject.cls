@@ -16,17 +16,20 @@ Option Explicit
 Private Utils As cLeanCloudUtils
 Private Dict As New Dictionary
 
-Public ClassName As String, ObjectID As String
+Public UpdateMode As Boolean  'Record updated fields
+Private UpdatedFields As New Collection
+
+Public ClassName As String, ObjectId As String
 Public CreatedAt As Date, UpdatedAt As Date
 
 Public Sub Initialize( _
     ByRef oUtils As cLeanCloudUtils, _
     ByRef sClassName As String, _
-    Optional ByRef sObjectID As String _
+    Optional ByRef sObjectId As String _
 )
     Set Utils = oUtils
     ClassName = sClassName
-    ObjectID = sObjectID
+    ObjectId = sObjectId
 End Sub
 
 Public Property Get Item(Key)
@@ -43,6 +46,7 @@ Public Property Let Item(Key, Value)
     Else
         Dict.Add Key, Value
     End If
+    If UpdateMode Then UpdatedFields.Add Key
 End Property
 
 Public Property Set Item(Key, Value)
@@ -51,6 +55,7 @@ Public Property Set Item(Key, Value)
     Else
         Dict.Add Key, Value
     End If
+    If UpdateMode Then UpdatedFields.Add Key
 End Property
 
 'If need to 'Set'
@@ -100,7 +105,7 @@ Private Function ToLeanObject(Var) As Object  'Collection or Dictionary
             With OutputDict
                 .Add "__type", "Pointer"
                 .Add "className", Var.ClassName
-                .Add "objectId", Var.ObjectID
+                .Add "objectId", Var.ObjectId
             End With
             Set ToLeanObject = OutputDict
         'TODO: LCFile
@@ -151,7 +156,7 @@ Public Function Serialize() As Dictionary
         End If
     Next
     With Serialize
-        .Add "objectId", ObjectID
+        If Not ObjectId = "" Then .Add "objectId", ObjectId
         If Not CreatedAt = "0:00.00" Then .Add "createdAt", Utils.ConvertDateToISO(CreatedAt)
         If Not UpdatedAt = "0:00.00" Then .Add "updatedAt", Utils.ConvertDateToISO(UpdatedAt)
     End With
@@ -160,7 +165,7 @@ End Function
 Public Sub Deserialize(InputDict As Dictionary)
     Dim Key
     If InputDict.Exists("objectId") Then
-        ObjectID = InputDict("objectId")
+        ObjectId = InputDict("objectId")
         InputDict.Remove ("objectId")
     End If
     If InputDict.Exists("createdAt") Then
@@ -182,11 +187,12 @@ Public Sub Deserialize(InputDict As Dictionary)
             Me(Key) = InputDict(Key)
         End If
     Next
+    UpdateMode = True
 End Sub
 
 Public Sub Save()
     Dim JSON As New cJSON
-    If ObjectID = "" Then
+    If ObjectId = "" Then
         'New object
         With Utils.NewRequest("POST", "/classes/" + ClassName)
             .Send JSON.ToString(Serialize)
@@ -198,15 +204,33 @@ Public Sub Save()
                     Err.Raise 0, , Response("error")
                 Else
                     'Success
-                    ObjectID = Response("objectId")
+                    ObjectId = Response("objectId")
                     CreatedAt = Utils.ConvertISOToDate(Response("createdAt"))
+                    UpdateMode = True
                 End If
             Else
                 Err.Raise 0, , .StatusText + vbCrLf + .ResponseText
             End If
         End With
     Else
-        'TODO: update
+        'Update
+        Dim DeltaObject As New LCObject, Key
+        For Each Key In UpdatedFields
+            If VarType(Me(Key)) = vbObject Then
+                Set DeltaObject(Key) = Me(Key)
+            Else
+                DeltaObject(Key) = Me(Key)
+            End If
+        Next
+        With Utils.NewRequest("PUT", "/classes/" + ClassName + "/" + ObjectId)
+            .Send JSON.ToString(DeltaObject.Serialize)
+            .WaitForResponse
+            If .Status = 200 Then
+                UpdatedAt = Utils.ConvertISOToDate(JSON.Parse(.ResponseText)("updatedAt"))
+            Else
+                Err.Raise 0, , .StatusText + vbCrLf + .ResponseText
+            End If
+        End With
     End If
 End Sub
 
