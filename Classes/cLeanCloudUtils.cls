@@ -135,14 +135,14 @@ End Function
 
 
 'Convert Date To ISO Date format
-Public Function ConvertDateToISO(InputDate As Date) As String
+Public Function ConvertDateToISO(ByVal InputDate As Date) As String
     ConvertDateToISO = Format(InputDate, "yyyy-mm-ddTHH:MM:SS.000Z")
 End Function
 
 
 
 'Convert ISO Date format to Date
-Public Function ConvertISOToDate(InputISO As String) As Date
+Public Function ConvertISOToDate(ByVal InputISO As String) As Date
     ConvertISOToDate = CDate(Left$(Replace(InputISO, "T", " "), Len(InputISO) - 5))
 End Function
 

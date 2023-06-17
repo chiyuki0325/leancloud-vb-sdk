@@ -25,7 +25,7 @@ Public Enum AtomicOperationTypes
     aoBitXor = 8
 End Enum
 
-Private AtomicOperationTypeStrings() As String
+Private AtomicOperationTypeStrings()
 
 Private Utils As cLeanCloudUtils
 Private Dict As New Dictionary
@@ -87,22 +87,21 @@ Private Function IsObjectType(Var) As Boolean
                 'TODO: LCFile
                     IsObjectType = True
                 Case Else
-                    Err.Raise 13
+                    Err.Raise 13, , TypeName(Var)
             End Select
     End Select
 End Function
 
 Private Function ToLeanObject(Var) As Object  'Collection or Dictionary
+    Dim OutputDict As New Dictionary
     Select Case TypeName(Var)
         Case "Date"
-            Dim OutputDict As New Dictionary
             With OutputDict
                 .Add "__type", "Date"
                 .Add "iso", Utils.ConvertDateToISO(Var)
             End With
             Set ToLeanObject = OutputDict
         Case "Byte()"
-            Dim OutputDict As New Dictionary
             Dim XMLDocument As Object
             Set XMLDocument = CreateObject("MSXML2.DOMDocument")
             With XMLDocument
@@ -117,7 +116,6 @@ Private Function ToLeanObject(Var) As Object  'Collection or Dictionary
             Set XMLDocument = Nothing
             Set ToLeanObject = OutputDict
         Case "LCObject"  'Pointer
-            Dim OutputDict As New Dictionary
             With OutputDict
                 .Add "__type", "Pointer"
                 .Add "className", Var.ClassName
@@ -195,27 +193,27 @@ Public Sub Deserialize(InputDict As Dictionary)
     For Each Key In InputDict.Keys
         If VarType(InputDict(Key)) = vbObject Then
             If VarType(ToVBObject(InputDict(Key))) = vbObject Then
-                Set Me(Key) = ToVBObject(InputDict(Key))
+                Set Me(CStr(Key)) = ToVBObject(InputDict(Key))
             Else
-                Me(Key) = InputDict(Key)
+                Me(CStr(Key)) = ToVBObject(InputDict(Key))
             End If
         Else
-            Me(Key) = InputDict(Key)
+            Me(CStr(Key)) = InputDict(Key)
         End If
     Next
     UpdateMode = True
 End Sub
 
 Public Sub Save()
-    Dim json As New cJSON
+    Dim JSON As New cJSON
     If ObjectId = "" Then
         'New object
         With Utils.NewRequest("POST", "/classes/" + ClassName)
-            .Send json.ToString(Serialize)
+            .Send JSON.ToString(Serialize)
             .WaitForResponse
             If .Status = 201 Then
                 Dim Response As Dictionary
-                Set Response = json.Parse(.ResponseText)
+                Set Response = JSON.Parse(.ResponseText)
                 If Response.Exists("error") Then
                     Err.Raise 0, , Response("error")
                 Else
@@ -239,10 +237,10 @@ Public Sub Save()
             End If
         Next
         With Utils.NewRequest("PUT", "/classes/" + ClassName + "/" + ObjectId)
-            .Send json.ToString(DeltaObject.Serialize)
+            .Send JSON.ToString(DeltaObject.Serialize)
             .WaitForResponse
             If .Status = 200 Then
-                UpdatedAt = Utils.ConvertISOToDate(json.Parse(.ResponseText)("update"))
+                UpdatedAt = Utils.ConvertISOToDate(JSON.Parse(.ResponseText)("update"))
             Else
                 Err.Raise 0, , .StatusText + vbCrLf + .ResponseText
             End If
@@ -265,10 +263,10 @@ Private Sub AtomicOperation( _
     End With
     Dict.Add Key, DictOp2
     With Utils.NewRequest("PUT", "/classes/" + ClassName + "/" + ObjectId)
-        .Send json.ToString(Dict)
+        .Send JSON.ToString(Dict)
         .WaitForResponse
         If .Status = 200 Then
-            UpdatedAt = Utils.ConvertISOToDate(json.Parse(.ResponseText)("update"))
+            UpdatedAt = Utils.ConvertISOToDate(JSON.Parse(.ResponseText)("update"))
         Else
             Err.Raise 0, , .StatusText + vbCrLf + .ResponseText
         End If
@@ -367,5 +365,15 @@ Public Sub Remove(Key$)
         Err.Raise 9
     End If
 End Sub
+
+
+Public Sub Fetch()
+    Dim JSON As New cJSON
+    Dim Query As New LCQuery
+    Query.Initialize Utils, ClassName
+    Me.Deserialize Query.GetObject(ObjectId).Serialize
+    Set UpdatedFields = New Collection
+End Sub
+
 
 
