@@ -13,6 +13,20 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = True
 Option Explicit
 
+Public Enum AtomicOperationTypes
+    aoDelete = 0
+    aoAdd = 1
+    aoAddUnique = 2
+    aoRemove = 3
+    aoIncrement = 4
+    aoDecrement = 5
+    aoBitAnd = 6
+    aoBitOr = 7
+    aoBitXor = 8
+End Enum
+
+Private AtomicOperationTypeStrings() As String
+
 Private Utils As cLeanCloudUtils
 Private Dict As New Dictionary
 
@@ -30,9 +44,11 @@ Public Sub Initialize( _
     Set Utils = oUtils
     ClassName = sClassName
     ObjectId = sObjectId
+    
+    AtomicOperationTypeStrings = Array("Delete", "Add", "AddUnique", "Remove", "Increment", "Decrement", "BitAnd", "BitOr", "BitXor")
 End Sub
 
-Public Property Get Item(Key)
+Public Property Get Item(Key$)
     If VarType(Dict.Item(Key)) = vbObject Then
         Set Item = Dict.Item(Key)
     Else
@@ -40,7 +56,7 @@ Public Property Get Item(Key)
     End If
 End Property
 
-Public Property Let Item(Key, Value)
+Public Property Let Item(Key$, Value)
     If Dict.Exists(Key) Then
         Dict.Item(Key) = Value
     Else
@@ -49,7 +65,7 @@ Public Property Let Item(Key, Value)
     If UpdateMode Then UpdatedFields.Add Key
 End Property
 
-Public Property Set Item(Key, Value)
+Public Property Set Item(Key$, Value)
     If Dict.Exists(Key) Then
         Set Dict.Item(Key) = Value
     Else
@@ -61,9 +77,9 @@ End Property
 'If need to 'Set'
 Private Function IsObjectType(Var) As Boolean
     Select Case VarType(Var)
-        Case vbInteger, vbBoolean, vbString, vbLong
+        Case vbInteger, vbBoolean, vbString, vbLong, vbSingle, vbDouble
             IsObjectType = False
-        Case vbDate, vbArray + vbByte, vbArray + vbString, vbArray + vbInteger, vbArray + vbLong, vbArray + vbBoolean
+        Case vbDate, vbArray + vbByte, vbArray + vbString, vbArray + vbInteger, vbArray + vbLong, vbArray + vbBoolean, vbArray + vbSingle, vbArray + vbDouble
             IsObjectType = True
         Case Else
             Select Case TypeName(Var)
@@ -191,15 +207,15 @@ Public Sub Deserialize(InputDict As Dictionary)
 End Sub
 
 Public Sub Save()
-    Dim JSON As New cJSON
+    Dim json As New cJSON
     If ObjectId = "" Then
         'New object
         With Utils.NewRequest("POST", "/classes/" + ClassName)
-            .Send JSON.ToString(Serialize)
+            .Send json.ToString(Serialize)
             .WaitForResponse
             If .Status = 201 Then
                 Dim Response As Dictionary
-                Set Response = JSON.Parse(.ResponseText)
+                Set Response = json.Parse(.ResponseText)
                 If Response.Exists("error") Then
                     Err.Raise 0, , Response("error")
                 Else
@@ -223,10 +239,10 @@ Public Sub Save()
             End If
         Next
         With Utils.NewRequest("PUT", "/classes/" + ClassName + "/" + ObjectId)
-            .Send JSON.ToString(DeltaObject.Serialize)
+            .Send json.ToString(DeltaObject.Serialize)
             .WaitForResponse
             If .Status = 200 Then
-                UpdatedAt = Utils.ConvertISOToDate(JSON.Parse(.ResponseText)("updatedAt"))
+                UpdatedAt = Utils.ConvertISOToDate(json.Parse(.ResponseText)("update"))
             Else
                 Err.Raise 0, , .StatusText + vbCrLf + .ResponseText
             End If
@@ -234,5 +250,122 @@ Public Sub Save()
     End If
 End Sub
 
+Private Sub AtomicOperation( _
+    Key$, _
+    AtomicOperationType As AtomicOperationTypes, _
+    DictOp As Dictionary _
+)
+    Dim Dict As New Dictionary, DictOp2 As New Dictionary
+    Dim Key2
+    With DictOp2
+        .Add "__op", AtomicOperationTypeStrings(AtomicOperationType)
+        For Each Key2 In DictOp
+            .Add Key2, DictOp(Key2)
+        Next
+    End With
+    Dict.Add Key, DictOp2
+    With Utils.NewRequest("PUT", "/classes/" + ClassName + "/" + ObjectId)
+        .Send json.ToString(Dict)
+        .WaitForResponse
+        If .Status = 200 Then
+            UpdatedAt = Utils.ConvertISOToDate(json.Parse(.ResponseText)("update"))
+        Else
+            Err.Raise 0, , .StatusText + vbCrLf + .ResponseText
+        End If
+    End With
+End Sub
+
+Public Sub Increase(Key$, IncreaseBy)
+    Select Case VarType(Me(Key))
+        Case vbInteger, vbLong, vbSingle, vbDouble
+            Me(Key) = Me(Key) + IncreaseBy
+            Dim DictOp As New Dictionary
+            With DictOp
+                .Add "amount", IncreaseBy
+            End With
+            AtomicOperation Key, aoIncrement, DictOp
+        Case Else
+            Err.Raise 13
+    End Select
+End Sub
+
+Public Sub AppendTo(Key$, ItemsToAdd())
+    If TypeName(Me(Key)) = "Collection" Then
+        Dim ColCurrent As Collection
+        Set ColCurrent = Me(Key)
+        Dim v
+        Dim DictOp As New Dictionary, ColObjects As New Collection
+        For Each v In ItemsToAdd
+            ColCurrent.Add v
+            ColObjects.Add v
+        Next
+        DictOp.Add "objects", ColObjects
+        AtomicOperation Key, aoAdd, DictOp
+    Else
+        Err.Raise 13
+    End If
+End Sub
+
+Public Sub AppendUniqueTo(Key$, ItemsToAdd())
+    If TypeName(Me(Key)) = "Collection" Then
+        Dim ColCurrent As Collection
+        Set ColCurrent = Me(Key)
+        Dim v, w
+        Dim DictOp As New Dictionary, ColObjects As New Collection
+        Dim Exists As Boolean
+        For Each v In ItemsToAdd
+            Exists = False
+            For Each w In ColCurrent
+                If w = v Then
+                    Exists = True
+                    Exit For
+                End If
+            Next
+            If Not Exists Then ColCurrent.Add v
+            
+            ColObjects.Add v
+        Next
+        DictOp.Add "objects", ColObjects
+        AtomicOperation Key, aoAddUnique, DictOp
+    Else
+        Err.Raise 13
+    End If
+End Sub
+
+
+Public Sub RemoveFrom(Key$, ItemsToRemove())
+    If TypeName(Me(Key)) = "Collection" Then
+        Dim ColCurrent As Collection
+        Set ColCurrent = Me(Key)
+        Dim v
+        Dim i%
+        Dim DictOp As New Dictionary, ColObjects As New Collection
+        For Each v In ItemsToRemove
+            For i = 1 To ColCurrent.Count
+                If ColCurrent(i) = v Then
+                    ColCurrent.Remove i
+                    Exit For
+                End If
+            Next
+            ColObjects.Add v
+        Next
+        DictOp.Add "objects", ColObjects
+        AtomicOperation Key, aoRemove, DictOp
+    Else
+        Err.Raise 13
+    End If
+End Sub
+
+
+Public Sub Remove(Key$)
+    If Dict.Exists(Key) Then
+        Dict.Remove Key
+        Dim DictOp As New Dictionary
+        DictOp.Add "delete", True
+        AtomicOperation Key, aoDelete, DictOp
+    Else
+        Err.Raise 9
+    End If
+End Sub
 
 
